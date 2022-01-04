@@ -15,4 +15,4 @@ def monitor_webhook(product_link, product_title, product_price, product_sku, pro
       webhook.add_embed(embed)
       response = webhook.execute()
       if "<Response [405]>" in str(response):
-            print("[INFO] Webhook Incorrect")
+            print("[ERROR] Webhook Incorrect")

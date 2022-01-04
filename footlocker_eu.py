@@ -4,19 +4,23 @@ import logging
 import warnings
 import csv
 from webhook import monitor_webhook
+from proxies import proxy
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 
 RETRY_DELAY = 1 #In seconds 
+DELAY = 5 #In seconds 
+USE_PROXIES = False 
 
 tasks = []
+proxies = []
+
 class footlocker:
       def __init__(self, sku, region, webhook_link) -> None: 
             self.sku = sku
             self.endpoint = f"https://www.footlocker{region}/api/products/pdp/{self.sku}"
             self.product_link = f"https://www.footlocker{region}/product/Dario/{self.sku}"
             self.webhook_link = webhook_link
-            
             
             self.headers = {
                   "cache-control": "max-age=0",
@@ -37,9 +41,14 @@ class footlocker:
       
       async def monitor_sku(self):
             async with aiohttp.ClientSession(trust_env=True) as s:
-                  try:
-                        while True:
-                              product_response = await s.get(url=self.endpoint, headers=self.headers)
+                  while True:
+                        try:
+                              if USE_PROXIES == False:
+                                    product_response = await s.get(url=self.endpoint, headers=self.headers)
+                              elif USE_PROXIES == True:
+                                    proxies.append(proxy())
+                                    product_response = await s.get(url=self.endpoint, headers=self.headers, proxy=proxies[0]) 
+                                    proxies.clear()           
                               if "Sold Out" in await product_response.text():
                                     print(f"[STATUS] {product_response.status} | {self.sku} Out Of Stock")
                                     await asyncio.sleep(RETRY_DELAY)
@@ -57,11 +66,16 @@ class footlocker:
                                           print(f"[INFO] Found Sizes {sizes}")
                                           product_price = str(in_stock_varients[0]["price"]["formattedOriginalPrice"]).replace(" ", "")
                                           monitor_webhook(self.product_link, product_title, product_price, self.sku, sizes, self.webhook_link)
+                                          await asyncio.sleep(DELAY)
                                     else:
                                           print("[INFO] No Sizes Found")
                                           await asyncio.sleep(RETRY_DELAY)
-                  except aiohttp.client_exceptions.ClientConnectorError:
-                        print("[INFO] Invalid Region")     
+                        except aiohttp.client_exceptions.ClientConnectorError:
+                              print("[ERROR] Invalid Region")  
+                              exit()   
+                        except aiohttp.client_exceptions.ServerDisconnectedError:
+                              print("[ERROR] Proxy Error")
+                              proxies.clear() 
                                        
 with warnings.catch_warnings():
       warnings.filterwarnings("ignore", category=DeprecationWarning)
