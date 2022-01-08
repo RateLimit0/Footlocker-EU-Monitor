@@ -5,21 +5,23 @@ import warnings
 import csv
 from webhook import monitor_webhook
 from proxies import proxy
+from datetime import datetime
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 
-RETRY_DELAY = 1 #In seconds 
-DELAY = 5 #In seconds 
-USE_PROXIES = False 
+RETRY_DELAY = 1 #In seconds
+DELAY = 50 #In seconds
+USE_PROXIES = False
 
 tasks = []
 proxies = []
 
 class footlocker:
-      def __init__(self, sku, region, webhook_link) -> None: 
+      def __init__(self, sku, region, webhook_link) -> None:
+            self.region = region
             self.sku = sku
-            self.endpoint = f"https://www.footlocker{region}/api/products/pdp/{self.sku}"
-            self.product_link = f"https://www.footlocker{region}/product/Dario/{self.sku}"
+            self.endpoint = f"https://www.footlocker{self.region}/api/products/pdp/{self.sku}"
+            self.product_link = f"https://www.footlocker{self.region}/product/Dario/{self.sku}"
             self.webhook_link = webhook_link
             
             self.headers = {
@@ -48,28 +50,40 @@ class footlocker:
                               elif USE_PROXIES == True:
                                     proxies.append(proxy())
                                     product_response = await s.get(url=self.endpoint, headers=self.headers, proxy=proxies[0]) 
-                                    proxies.clear()           
+                                    proxies.clear()
                               if "Sold Out" in await product_response.text():
                                     print(f"[STATUS] {product_response.status} | {self.sku} Out Of Stock")
                                     await asyncio.sleep(RETRY_DELAY)
                               elif product_response.status == 400:
-                                    print(f"[STATUS] {product_response.status} | {self.sku} Not Loaded")  
-                                    await asyncio.sleep(RETRY_DELAY)     
+                                    print(f"[STATUS] {product_response.status} | {self.sku} Not Loaded")
+                                    await asyncio.sleep(RETRY_DELAY)
                               else:
-                                    product_json = await product_response.json()          
-                                    product_title = product_json["name"]
-                                    print(f"[STATUS] {product_response.status} | Found {product_title}, Fetching Stock")
-                                    varients = product_json["sellableUnits"]
-                                    in_stock_varients = [x for x in varients if x["stockLevelStatus"] == "inStock"]
-                                    if len(in_stock_varients) > 0:
-                                          sizes = str([x["attributes"][0]["value"] for x in in_stock_varients]).replace("[", "").replace("]", "").replace("'", "")
-                                          print(f"[INFO] Found Sizes {sizes}")
-                                          product_price = str(in_stock_varients[0]["price"]["formattedOriginalPrice"]).replace(" ", "")
-                                          monitor_webhook(self.product_link, product_title, product_price, self.sku, sizes, self.webhook_link)
-                                          await asyncio.sleep(DELAY)
-                                    else:
-                                          print("[INFO] No Sizes Found")
+                                    product_json = await product_response.json()     
+                                    if product_json["variantAttributes"][0]["displayCountDownTimer"] == True:
+                                          time = product_json["variantAttributes"][0]["skuLaunchDate"]
+                                          time = str(time).replace(" ", "|").split("|")[3]
+                                          release_time =  datetime.now() - datetime.strptime(time, "%H:%M:%S")
+                                          print(release_time)
+                                          
+                                    
+
+                                          break
+                                          print(f"[STATUS] {product_response.status} | {self.sku} On Timer {time}")
                                           await asyncio.sleep(RETRY_DELAY)
+                                    else:      
+                                          product_title = product_json["name"]
+                                          print(f"[STATUS] {product_response.status} | Found {product_title}, Fetching Stock")
+                                          varients = product_json["sellableUnits"]
+                                          in_stock_varients = [x for x in varients if x["stockLevelStatus"] == "inStock"]
+                                          if len(in_stock_varients) > 0:
+                                                sizes = str([x["attributes"][0]["value"] for x in in_stock_varients]).replace("[", "").replace("]", "").replace("'", "")
+                                                print(f"[INFO] Found Sizes {sizes}")
+                                                product_price = str(in_stock_varients[0]["price"]["formattedOriginalPrice"]).replace(" ", "")
+                                                monitor_webhook(self.product_link, product_title, self.region, product_price, self.sku, sizes, self.webhook_link)
+                                                await asyncio.sleep(DELAY)
+                                          else:
+                                                print("[INFO] No Sizes Found")
+                                                await asyncio.sleep(RETRY_DELAY)
                         except aiohttp.client_exceptions.ClientConnectorError:
                               print("[ERROR] Invalid Region")  
                               exit()   
@@ -89,4 +103,5 @@ async def run():
 
 with warnings.catch_warnings():
       warnings.filterwarnings("ignore", category=DeprecationWarning)
-      asyncio.get_event_loop().run_until_complete(run())
+      if __name__ == "__main__":
+            asyncio.get_event_loop().run_until_complete(run())
