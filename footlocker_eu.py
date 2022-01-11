@@ -61,9 +61,6 @@ class footlocker:
                                     product_json = await product_response.json()     
                                     if product_json["variantAttributes"][0]["displayCountDownTimer"] == True:
                                           time = product_json["variantAttributes"][0]["skuLaunchDate"]
-                                          print(time)
-                                          
-                                          break
                                           print(f"[STATUS] {product_response.status} | {self.sku} On Timer {time}")
                                           await asyncio.sleep(RETRY_DELAY)
                                     else:      
