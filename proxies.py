@@ -17,4 +17,4 @@ def proxy():
       except IndexError:
             print("[ERROR] Proxy Format Incorrect [hostname:port:username:password]")
             exit()               
-proxy()
+
