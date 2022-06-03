@@ -1,6 +1,6 @@
 from discord_webhook import DiscordWebhook, DiscordEmbed
-import datetime
-time_now = datetime.datetime.now().strftime("%H:%M:%S")
+from functions import webhook_time_stmap
+
 
 def monitor_webhook(product_link, product_title, product_region, product_price, product_sku, product_sizes, webhook_link):
       webhook = DiscordWebhook(url=webhook_link, rate_limit_retry=True)
@@ -11,8 +11,10 @@ def monitor_webhook(product_link, product_title, product_region, product_price, 
       embed.add_embed_field(name="**Product Region:**", value=product_region, inline=False)
       embed.add_embed_field(name="**Sizes Found:**", value=product_sizes, inline=False)
       
-      embed.set_footer(text=f"Dario#9999 | {time_now}")
+      embed.set_footer(text=f"Dario#9999 | {webhook_time_stmap()}")
       webhook.add_embed(embed)
       response = webhook.execute()
       if "<Response [405]>" in str(response):
             print("[ERROR] Webhook Incorrect")
+      else:
+            print("[INFO] Webhook Sent")      

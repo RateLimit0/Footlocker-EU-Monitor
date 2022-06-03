@@ -1,17 +1,24 @@
 import asyncio
-import aiohttp
+from aiohttp import ClientRequest, ClientSession, client_exceptions
 import logging
 import warnings
 import csv
 from webhook import monitor_webhook
 from proxies import proxy
+from functions import time_stmap
 from datetime import datetime
+import pause
+from time import strptime
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 
-RETRY_DELAY = 1 #In seconds
-DELAY = 50 #In seconds
-USE_PROXIES = False
+class CustomRequestClass(ClientRequest):
+    DEFAULT_HEADERS = {}
+    pass
+
+RETRY_DELAY = 5 #In seconds
+DELAY = 10 #In seconds
+USE_PROXIES = True
 
 tasks = []
 proxies = []
@@ -20,7 +27,7 @@ class footlocker:
       def __init__(self, sku, region, webhook_link) -> None:
             self.region = region
             self.sku = sku
-            self.endpoint = f"https://www.footlocker{self.region}/api/products/pdp/{self.sku}"
+            self.endpoint = f"https://www.footlocker{self.region}/api/products/pdp/{self.sku}?timestamp={time_stmap()}"
             self.product_link = f"https://www.footlocker{self.region}/product/Dario/{self.sku}"
             self.webhook_link = webhook_link
             
@@ -29,7 +36,6 @@ class footlocker:
                   "sec-ch-ua": '" Not A;Brand";v="99", "Chromium";v="96", "Google Chrome";v="96"',
                   "sec-ch-ua-mobile": "?0",
                   "sec-ch-ua-platform": '"Windows"',
-                  "upgrade-insecure-requests": "1",
                   "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
                   "accept": "application/json, */*",
                   "sec-fetch-site": "none",
@@ -42,14 +48,14 @@ class footlocker:
 
       
       async def monitor_sku(self):
-            async with aiohttp.ClientSession(trust_env=True) as s:
+            async with ClientSession(headers=self.headers, request_class=CustomRequestClass, trust_env=True) as s:
                   while True:
                         try:
                               if USE_PROXIES == False:
-                                    product_response = await s.get(url=self.endpoint, headers=self.headers)
+                                    product_response = await s.get(url=self.endpoint)
                               elif USE_PROXIES == True:
                                     proxies.append(proxy())
-                                    product_response = await s.get(url=self.endpoint, headers=self.headers, proxy=proxies[0]) 
+                                    product_response = await s.get(url=self.endpoint, proxy=proxies[0]) 
                                     proxies.clear()
                               if "Sold Out" in await product_response.text():
                                     print(f"[STATUS] {product_response.status} | {self.sku} Out Of Stock")
@@ -60,9 +66,15 @@ class footlocker:
                               else:
                                     product_json = await product_response.json()     
                                     if product_json["variantAttributes"][0]["displayCountDownTimer"] == True:
-                                          time = product_json["variantAttributes"][0]["skuLaunchDate"]
+                                          time = str(product_json["variantAttributes"][0]["skuLaunchDate"])
                                           print(f"[STATUS] {product_response.status} | {self.sku} On Timer {time}")
-                                          await asyncio.sleep(RETRY_DELAY)
+                                          print(f"[INFO] Pauing Intill {time[:-9]}")   
+                                          time = time.split(" ")
+                                          if "0" in time[1]:
+                                                time[1] = time[1].replace("0", "")
+                                          hour = int(time[3].replace(":", "").replace("0", ""))      
+                                       
+                                          pause.until(datetime(int(time[2]), int(strptime(time[0],'%b').tm_mon), int(time[1]), hour))
                                     else:      
                                           product_title = product_json["name"]
                                           print(f"[STATUS] {product_response.status} | Found {product_title}, Fetching Stock")
@@ -77,10 +89,10 @@ class footlocker:
                                           else:
                                                 print("[INFO] No Sizes Found")
                                                 await asyncio.sleep(RETRY_DELAY)
-                        except aiohttp.client_exceptions.ClientConnectorError:
+                        except client_exceptions.ClientConnectorError:
                               print("[ERROR] Invalid Region")  
-                              exit()   
-                        except aiohttp.client_exceptions.ServerDisconnectedError:
+                              break   
+                        except client_exceptions.ServerDisconnectedError:
                               print("[ERROR] Proxy Error")
                               proxies.clear() 
                                        
